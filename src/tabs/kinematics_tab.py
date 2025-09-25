@@ -130,7 +130,7 @@ Results will appear here after running calculations."""
         # Setup analysis results graph
         self.setup_analysis_graph(results_frame)
 
-        # Setup geometry viewer (duplicate of main geometry view)
+        # Setup geometry viewer using the existing PlottingUtils class
         self.setup_kinematics_geometry(geometry_frame)
 
     def setup_analysis_graph(self, parent):
@@ -157,7 +157,7 @@ Results will appear here after running calculations."""
         self.kinematics_canvas.draw()
 
     def setup_kinematics_geometry(self, parent):
-        """Setup 3D geometry viewer for kinematics tab"""
+        """Setup 3D geometry viewer for kinematics tab using PlottingUtils"""
         # Create layout with controls on left, 3D plot on right
         geo_main_frame = ttk.Frame(parent)
         geo_main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -190,74 +190,33 @@ Results will appear here after running calculations."""
                         variable=self.kin_show_pushrod,
                         command=self.update_kinematics_geometry).pack(anchor=tk.W, pady=2)
 
-        # Right side: 3D plot
+        # Right side: 3D plot using PlottingUtils
         geo_plot_frame = ttk.Frame(geo_main_frame)
         geo_plot_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        # Create matplotlib figure for kinematics geometry
-        self.kinematics_geo_fig = Figure(figsize=(10, 6), dpi=100)
-        self.kinematics_geo_ax = self.kinematics_geo_fig.add_subplot(111, projection='3d')
+        # Create PlottingUtils instance for kinematics geometry view
+        self.kinematics_plotting = PlottingUtils(
+            geo_plot_frame,
+            self.basic_data,
+            self.pushrod_data,
+            self.basic_members,
+            self.pushrod_members
+        )
 
-        # Embed in tkinter
-        self.kinematics_geo_canvas = FigureCanvasTkAgg(self.kinematics_geo_fig, master=geo_plot_frame)
-        self.kinematics_geo_canvas.draw()
-        self.kinematics_geo_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # Set references for easy access
+        self.kinematics_geo_ax = self.kinematics_plotting.ax
+        self.kinematics_geo_canvas = self.kinematics_plotting.canvas
 
-        # Add toolbar
-        geo_toolbar_frame = ttk.Frame(geo_plot_frame)
-        geo_toolbar_frame.pack(side=tk.BOTTOM, fill=tk.X)
-
-        geo_toolbar = NavigationToolbar2Tk(self.kinematics_geo_canvas, geo_toolbar_frame)
-        geo_toolbar.update()
-
-        # Initial plot
-        self.kinematics_geo_ax.set_title('Suspension Geometry - Kinematics View')
-        self.kinematics_geo_ax.grid(True)
-        self.kinematics_geo_canvas.draw()
+        # Initial plot with both suspensions visible
+        self.update_kinematics_geometry()
 
     def update_kinematics_geometry(self):
-        """Update the kinematics 3D geometry plot"""
-        self.kinematics_geo_ax.clear()
-
-        # Plot basic suspension if enabled
-        if self.kin_show_basic.get():
-            self.kinematics_geo_ax.scatter(self.basic_data[0, :], self.basic_data[1, :], self.basic_data[2, :],
-                                           color='red', s=100, alpha=0.8, label='Basic')
-
-            # Draw basic suspension lines
-            for i, j in self.basic_members:
-                if i < self.basic_data.shape[1] and j < self.basic_data.shape[1]:
-                    self.kinematics_geo_ax.plot([self.basic_data[0, i], self.basic_data[0, j]],
-                                                [self.basic_data[1, i], self.basic_data[1, j]],
-                                                [self.basic_data[2, i], self.basic_data[2, j]],
-                                                'r-', linewidth=2, alpha=0.7)
-
-        # Plot pushrod suspension if enabled
-        if self.kin_show_pushrod.get():
-            self.kinematics_geo_ax.scatter(self.pushrod_data[0, :], self.pushrod_data[1, :], self.pushrod_data[2, :],
-                                           color='blue', s=100, alpha=0.8, label='Pushrod')
-
-            # Draw pushrod suspension lines
-            for i, j in self.pushrod_members:
-                if i < self.pushrod_data.shape[1] and j < self.pushrod_data.shape[1]:
-                    self.kinematics_geo_ax.plot([self.pushrod_data[0, i], self.pushrod_data[0, j]],
-                                                [self.pushrod_data[1, i], self.pushrod_data[1, j]],
-                                                [self.pushrod_data[2, i], self.pushrod_data[2, j]],
-                                                'b-', linewidth=2, alpha=0.7)
-
-        # Set up plot
-        self.kinematics_geo_ax.set_xlabel('X (forward)')
-        self.kinematics_geo_ax.set_ylabel('Y (left)')
-        self.kinematics_geo_ax.set_zlabel('Z (up)')
-        self.kinematics_geo_ax.set_title('Suspension Geometry - Kinematics View')
-        self.kinematics_geo_ax.grid(True)
-
-        # Add legend if both are shown
-        if self.kin_show_basic.get() and self.kin_show_pushrod.get():
-            self.kinematics_geo_ax.legend()
-
-        # Refresh canvas
-        self.kinematics_geo_canvas.draw()
+        """Update the kinematics 3D geometry plot using PlottingUtils"""
+        # Use the existing plotting utility with checkbox states
+        self.kinematics_plotting.update_plot(
+            self.kin_show_basic.get(),
+            self.kin_show_pushrod.get()
+        )
 
     def set_kinematics_top_view(self):
         """Set top view for kinematics geometry"""
