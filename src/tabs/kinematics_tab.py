@@ -3,6 +3,7 @@ from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 from src.utils.plotting import PlottingUtils
+import numpy as np
 
 
 class KinematicsTab:
@@ -235,7 +236,41 @@ Results will appear here after running calculations."""
 
     def calculate_motion_ratio(self):
         """Calculate motion ratio through suspension travel"""
-        self.update_kinematics_results("Motion Ratio calculation - coming next!")
+        # 1) Read range and step size from user inputs
+        travel_min = float(self.travel_min.get())
+        travel_max = float(self.travel_max.get())
+        step = float(self.travel_step.get())
+
+        # 2) Pick which suspension dataset to use and then calculate
+
+        if self.kinematics_suspension.get() == "basic":
+            travel_vals, mr_vals = calculate_motion_ratio_basic(
+                self.basic_data,
+                travel_range=(travel_min, travel_max),
+                step=step
+            )
+        else:
+            travel_vals, mr_vals = calculate_motion_ratio_pushrod(
+                self.pushrod_data,
+                travel_range=(travel_min, travel_max),
+                step=step
+            )
+
+
+        # 4) Update results text box
+        result_text = "Motion Ratio Results:\n"
+        for t, m in zip(travel_vals, mr_vals):
+            result_text += f"Travel {t:.1f} mm -> MR {m:.3f}\n"
+        self.update_kinematics_results(result_text)
+
+        # 5) Plot results in analysis graph
+        self.kinematics_ax.clear()
+        self.kinematics_ax.plot(travel_vals, mr_vals, marker="o")
+        self.kinematics_ax.set_xlabel("Wheel Travel (mm)")
+        self.kinematics_ax.set_ylabel("Motion Ratio (wheel/shock)")
+        self.kinematics_ax.set_title("Motion Ratio Curve")
+        self.kinematics_ax.grid(True, alpha=0.3)
+        self.kinematics_canvas.draw()
 
     def calculate_camber_curve(self):
         """Calculate camber curve through suspension travel"""
@@ -251,3 +286,68 @@ Results will appear here after running calculations."""
         self.kinematics_results.delete(1.0, tk.END)
         self.kinematics_results.insert(tk.END, text)
         self.kinematics_results.configure(state=tk.DISABLED)
+def calculate_motion_ratio_basic(data, travel_range=(-30, 30), step=1.0):
+    """Motion ratio for basic suspension (shock directly on arm)."""
+    shock_top = data[:, 4]  # (x,y,z)
+    lca_out   = data[:, 6]  # (x,y,z)
+    shock_bot = data[:, 7]  # (x,y,z)
+
+    wheel_ref_z = lca_out[2]
+    spring_ref_len = np.linalg.norm(shock_top - shock_bot)
+
+    travel_vals = np.arange(travel_range[0], travel_range[1] + step, step)
+    mr_vals = []
+
+    for dz in travel_vals:
+        # Move wheel/LCA outboard point
+        lca_out_new = lca_out.copy()
+        lca_out_new[2] = wheel_ref_z + dz
+
+        # Approx shock bottom follows wheel vertical travel
+        shock_bot_new = shock_bot.copy()
+        shock_bot_new[2] += dz
+
+        spring_len_new = np.linalg.norm(shock_top - shock_bot_new)
+        dy = dz
+        dx = spring_ref_len - spring_len_new
+        mr = dy / dx if abs(dx) > 1e-6 else np.nan
+        mr_vals.append(mr)
+
+    return travel_vals, np.array(mr_vals)
+
+
+def calculate_motion_ratio_pushrod(data, travel_range=(-30, 30), step=1.0):
+    """
+    Motion ratio for pushrod suspension using pushrod -> rocker -> shock.
+    data: 3x11 array as defined in TableUtils
+    """
+    travel_vals = np.arange(travel_range[0], travel_range[1] + step, step)
+    mr_vals = []
+
+    # Reference vertical positions
+    wheel_ref_z = data[2, 6]       # LCA_OUT z
+    pushrod_bot_z = data[2, 7]     # PushRodOUT z
+    shock_bot_z = data[2, 9]       # Shock_OUT z
+    shock_top_z = data[2, 10]      # Shock_IN z
+
+    shock_ref_len = shock_top_z - shock_bot_z
+
+    for dz in travel_vals:
+        # 1) Move wheel
+        wheel_z_new = wheel_ref_z + dz
+
+        # 2) Move pushrod bottom with wheel
+        pushrod_bot_new_z = pushrod_bot_z + dz
+
+        # 3) Approx rocker rotation → shock vertical displacement
+        # For now, assume linear relation based on geometry:
+        # shock moves less than wheel, typical pushrod MR < 1
+        shock_disp = (pushrod_bot_new_z - pushrod_bot_z) * (shock_bot_z - shock_top_z) / (pushrod_bot_z - shock_top_z)
+
+        # Avoid division by zero
+        mr = dz / shock_disp if abs(shock_disp) > 1e-6 else np.nan
+        mr_vals.append(mr)
+
+    return travel_vals, np.array(mr_vals)
+
+
