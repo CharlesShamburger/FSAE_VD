@@ -4,6 +4,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.figure import Figure
 from src.utils.plotting import PlottingUtils
 import numpy as np
+import logging
 
 
 class KinematicsTab:
@@ -12,6 +13,9 @@ class KinematicsTab:
         self.pushrod_data = pushrod_data
         self.basic_members = basic_members
         self.pushrod_members = pushrod_members
+
+        # Setup logging
+        self.logger = logging.getLogger(__name__)
 
         self.kinematics_frame = ttk.Frame(parent_notebook)
         parent_notebook.add(self.kinematics_frame, text="Kinematics")
@@ -83,7 +87,7 @@ class KinematicsTab:
         ttk.Button(input_frame, text="Camber Curve",
                    command=self.calculate_camber_curve, state=tk.DISABLED).pack(fill=tk.X, pady=2)
         ttk.Button(input_frame, text="Roll Center Height",
-                   command=self.calculate_roll_center, state=tk.DISABLED).pack(fill=tk.X, pady=2)
+                   command=self.calculate_roll_center).pack(fill=tk.X, pady=2)
 
         # Right side: Results display
         results_frame = ttk.LabelFrame(main_control_frame, text="Calculation Results", padding=10)
@@ -136,8 +140,44 @@ Results will appear here after running calculations."""
 
     def setup_analysis_graph(self, parent):
         """Setup the analysis results graph"""
-        # Create matplotlib figure for kinematics results
-        self.kinematics_fig = Figure(figsize=(12, 6), dpi=100)
+        # Create control frame for graph options
+        graph_control_frame = ttk.Frame(parent)
+        graph_control_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 5))
+
+        # Save plot button
+        ttk.Button(graph_control_frame, text="Save Plot",
+                   command=self.save_kinematics_plot).pack(side=tk.LEFT, padx=(0, 5))
+
+        # Reset view button
+        ttk.Button(graph_control_frame, text="Reset View",
+                   command=self.reset_kinematics_view).pack(side=tk.LEFT, padx=(0, 10))
+
+        # Grid toggle
+        self.kinematics_grid_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(graph_control_frame, text="Show Grid",
+                        variable=self.kinematics_grid_var,
+                        command=self.toggle_kinematics_grid).pack(side=tk.LEFT, padx=(0, 10))
+
+        # Axis limits controls
+        ttk.Label(graph_control_frame, text="X Limits:").pack(side=tk.LEFT, padx=(10, 2))
+        self.kinematics_xlim_min = ttk.Entry(graph_control_frame, width=6)
+        self.kinematics_xlim_min.pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Label(graph_control_frame, text="to").pack(side=tk.LEFT, padx=2)
+        self.kinematics_xlim_max = ttk.Entry(graph_control_frame, width=6)
+        self.kinematics_xlim_max.pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Label(graph_control_frame, text="Y Limits:").pack(side=tk.LEFT, padx=(10, 2))
+        self.kinematics_ylim_min = ttk.Entry(graph_control_frame, width=6)
+        self.kinematics_ylim_min.pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Label(graph_control_frame, text="to").pack(side=tk.LEFT, padx=2)
+        self.kinematics_ylim_max = ttk.Entry(graph_control_frame, width=6)
+        self.kinematics_ylim_max.pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Button(graph_control_frame, text="Apply Limits",
+                   command=self.apply_kinematics_limits).pack(side=tk.LEFT)
+
+        # Create matplotlib figure - SMALLER SIZE
+        self.kinematics_fig = Figure(figsize=(10, 5), dpi=100)
         self.kinematics_ax = self.kinematics_fig.add_subplot(111)
 
         # Embed in tkinter
@@ -145,7 +185,7 @@ Results will appear here after running calculations."""
         self.kinematics_canvas.draw()
         self.kinematics_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # Add toolbar
+        # Add toolbar - this goes AFTER the canvas
         toolbar_frame = ttk.Frame(parent)
         toolbar_frame.pack(side=tk.BOTTOM, fill=tk.X)
 
@@ -156,6 +196,27 @@ Results will appear here after running calculations."""
         self.kinematics_ax.set_title("Kinematics Analysis Results")
         self.kinematics_ax.grid(True, alpha=0.3)
         self.kinematics_canvas.draw()
+
+        # Enable mouse wheel zoom
+        def on_scroll(event):
+            if event.inaxes == self.kinematics_ax:
+                xlim = self.kinematics_ax.get_xlim()
+                ylim = self.kinematics_ax.get_ylim()
+
+                xdata = event.xdata
+                ydata = event.ydata
+
+                zoom_factor = 1.2 if event.button == 'down' else 1 / 1.2
+
+                x_range = (xlim[1] - xlim[0]) * zoom_factor
+                y_range = (ylim[1] - ylim[0]) * zoom_factor
+
+                self.kinematics_ax.set_xlim([xdata - x_range / 2, xdata + x_range / 2])
+                self.kinematics_ax.set_ylim([ydata - y_range / 2, ydata + y_range / 2])
+
+                self.kinematics_canvas.draw()
+
+        self.kinematics_canvas.mpl_connect('scroll_event', on_scroll)
 
     def setup_kinematics_geometry(self, parent):
         """Setup 3D geometry viewer for kinematics tab using PlottingUtils"""
@@ -213,7 +274,6 @@ Results will appear here after running calculations."""
 
     def update_kinematics_geometry(self):
         """Update the kinematics 3D geometry plot using PlottingUtils"""
-        # Use the existing plotting utility with checkbox states
         self.kinematics_plotting.update_plot(
             self.kin_show_basic.get(),
             self.kin_show_pushrod.get()
@@ -234,43 +294,105 @@ Results will appear here after running calculations."""
         self.kinematics_geo_ax.view_init(elev=20, azim=45)
         self.kinematics_geo_canvas.draw()
 
+    def save_kinematics_plot(self):
+        """Save the current kinematics plot"""
+        from tkinter import filedialog
+        try:
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".png",
+                filetypes=[("PNG files", "*.png"), ("PDF files", "*.pdf"), ("SVG files", "*.svg"), ("All files", "*.*")]
+            )
+            if file_path:
+                self.kinematics_fig.savefig(file_path, dpi=300, bbox_inches='tight')
+                self.logger.info(f"Plot saved to {file_path}")
+        except Exception as e:
+            self.logger.error(f"Error saving plot: {e}")
+
+    def reset_kinematics_view(self):
+        """Reset the kinematics plot view to default"""
+        try:
+            self.kinematics_ax.autoscale()
+            self.kinematics_fig.tight_layout()
+            self.kinematics_canvas.draw()
+            self.logger.info("Kinematics plot view reset")
+        except Exception as e:
+            self.logger.error(f"Error resetting view: {e}")
+
+    def toggle_kinematics_grid(self):
+        """Toggle grid visibility on kinematics plot"""
+        try:
+            self.kinematics_ax.grid(self.kinematics_grid_var.get(), alpha=0.3)
+            self.kinematics_canvas.draw()
+            self.logger.info(f"Grid {'enabled' if self.kinematics_grid_var.get() else 'disabled'}")
+        except Exception as e:
+            self.logger.error(f"Error toggling grid: {e}")
+
+    def apply_kinematics_limits(self):
+        """Apply custom axis limits to kinematics plot"""
+        try:
+            xlim_min = float(self.kinematics_xlim_min.get()) if self.kinematics_xlim_min.get() else None
+            xlim_max = float(self.kinematics_xlim_max.get()) if self.kinematics_xlim_max.get() else None
+            ylim_min = float(self.kinematics_ylim_min.get()) if self.kinematics_ylim_min.get() else None
+            ylim_max = float(self.kinematics_ylim_max.get()) if self.kinematics_ylim_max.get() else None
+
+            if xlim_min is not None and xlim_max is not None:
+                self.kinematics_ax.set_xlim(xlim_min, xlim_max)
+            if ylim_min is not None and ylim_max is not None:
+                self.kinematics_ax.set_ylim(ylim_min, ylim_max)
+
+            self.kinematics_fig.tight_layout()
+            self.kinematics_canvas.draw()
+            self.logger.info("Applied custom axis limits")
+        except ValueError as e:
+            self.logger.error(f"Invalid limit values: {e}")
+        except Exception as e:
+            self.logger.error(f"Error applying limits: {e}")
+
     def calculate_motion_ratio(self):
         """Calculate motion ratio through suspension travel"""
-        # 1) Read range and step size from user inputs
-        travel_min = float(self.travel_min.get())
-        travel_max = float(self.travel_max.get())
-        step = float(self.travel_step.get())
+        try:
+            travel_min = float(self.travel_min.get())
+            travel_max = float(self.travel_max.get())
+            step = float(self.travel_step.get())
+            self.logger.info(f"Calculating motion ratio: suspension={self.kinematics_suspension.get()}, "
+                             f"travel {travel_min} to {travel_max}, step {step}")
 
-        # 2) Pick which suspension dataset to use and then calculate
+            if self.kinematics_suspension.get() == "basic":
+                travel_vals, mr_vals = calculate_motion_ratio_basic(
+                    self.basic_data,
+                    travel_range=(travel_min, travel_max),
+                    step=step
+                )
+            else:
+                travel_vals, mr_vals = calculate_motion_ratio_pushrod(
+                    self.pushrod_data,
+                    travel_range=(travel_min, travel_max),
+                    step=step
+                )
 
-        if self.kinematics_suspension.get() == "basic":
-            travel_vals, mr_vals = calculate_motion_ratio_basic(
-                self.basic_data,
-                travel_range=(travel_min, travel_max),
-                step=step
-            )
-        else:
-            travel_vals, mr_vals = calculate_motion_ratio_pushrod(
-                self.pushrod_data,
-                travel_range=(travel_min, travel_max),
-                step=step
-            )
+            # Update results text box
+            result_text = "Motion Ratio Results:\n"
+            for t, m in zip(travel_vals, mr_vals):
+                result_text += f"Travel {t:.1f} mm -> MR {m:.3f}\n"
+            self.update_kinematics_results(result_text)
 
+            # COMPLETELY RESET THE AXIS
+            self.kinematics_ax.clear()
+            self.kinematics_ax.set_aspect('auto')  # Reset aspect ratio
 
-        # 4) Update results text box
-        result_text = "Motion Ratio Results:\n"
-        for t, m in zip(travel_vals, mr_vals):
-            result_text += f"Travel {t:.1f} mm -> MR {m:.3f}\n"
-        self.update_kinematics_results(result_text)
+            # Plot results
+            self.kinematics_ax.plot(travel_vals, mr_vals, marker="o", linewidth=2)
+            self.kinematics_ax.set_xlabel("Wheel Travel (mm)", fontsize=11)
+            self.kinematics_ax.set_ylabel("Motion Ratio (wheel/shock)", fontsize=11)
+            self.kinematics_ax.set_title("Motion Ratio Curve", fontsize=12, fontweight='bold')
+            self.kinematics_ax.grid(True, alpha=0.3)
 
-        # 5) Plot results in analysis graph
-        self.kinematics_ax.clear()
-        self.kinematics_ax.plot(travel_vals, mr_vals, marker="o")
-        self.kinematics_ax.set_xlabel("Wheel Travel (mm)")
-        self.kinematics_ax.set_ylabel("Motion Ratio (wheel/shock)")
-        self.kinematics_ax.set_title("Motion Ratio Curve")
-        self.kinematics_ax.grid(True, alpha=0.3)
-        self.kinematics_canvas.draw()
+            self.kinematics_fig.tight_layout()
+            self.kinematics_canvas.draw()
+            self.logger.info(f"Motion ratio calculated successfully: {len(travel_vals)} points")
+        except Exception as e:
+            self.logger.error(f"Error calculating motion ratio: {e}")
+            self.update_kinematics_results(f"Error calculating motion ratio: {e}")
 
     def calculate_camber_curve(self):
         """Calculate camber curve through suspension travel"""
@@ -278,7 +400,29 @@ Results will appear here after running calculations."""
 
     def calculate_roll_center(self):
         """Calculate roll center height through suspension travel"""
-        self.update_kinematics_results("Roll Center calculation - feature coming soon!")
+        from src.utils.roll_center import RollCenterCalculator
+
+        # Get suspension type
+        susp_type = self.kinematics_suspension.get()
+        data = self.basic_data if susp_type == "basic" else self.pushrod_data
+
+        # Create calculator (always in mm for now)
+        calculator = RollCenterCalculator(track_width=1200.0, units="mm")
+
+        # Calculate
+        results = calculator.calculate_roll_center(data, susp_type)
+
+        # Display results in text area
+        output = calculator.format_results(results)
+        self.update_kinematics_results(output)
+
+        # COMPLETELY RESET THE AXIS BEFORE PLOTTING
+        self.kinematics_ax.clear()
+        self.kinematics_ax.set_aspect('auto')  # Important: reset aspect ratio
+
+        # Plot the 2D visualization with roll center
+        calculator.plot_roll_center(self.kinematics_ax, data, results, susp_type)
+        self.kinematics_canvas.draw()
 
     def update_kinematics_results(self, text):
         """Update the results text area"""
@@ -286,11 +430,13 @@ Results will appear here after running calculations."""
         self.kinematics_results.delete(1.0, tk.END)
         self.kinematics_results.insert(tk.END, text)
         self.kinematics_results.configure(state=tk.DISABLED)
+
+
 def calculate_motion_ratio_basic(data, travel_range=(-30, 30), step=1.0):
     """Motion ratio for basic suspension (shock directly on arm)."""
-    shock_top = data[:, 4]  # (x,y,z)
-    lca_out   = data[:, 6]  # (x,y,z)
-    shock_bot = data[:, 7]  # (x,y,z)
+    shock_top = data[:, 4]
+    lca_out = data[:, 6]
+    shock_bot = data[:, 7]
 
     wheel_ref_z = lca_out[2]
     spring_ref_len = np.linalg.norm(shock_top - shock_bot)
@@ -299,11 +445,9 @@ def calculate_motion_ratio_basic(data, travel_range=(-30, 30), step=1.0):
     mr_vals = []
 
     for dz in travel_vals:
-        # Move wheel/LCA outboard point
         lca_out_new = lca_out.copy()
         lca_out_new[2] = wheel_ref_z + dz
 
-        # Approx shock bottom follows wheel vertical travel
         shock_bot_new = shock_bot.copy()
         shock_bot_new[2] += dz
 
@@ -317,37 +461,24 @@ def calculate_motion_ratio_basic(data, travel_range=(-30, 30), step=1.0):
 
 
 def calculate_motion_ratio_pushrod(data, travel_range=(-30, 30), step=1.0):
-    """
-    Motion ratio for pushrod suspension using pushrod -> rocker -> shock.
-    data: 3x11 array as defined in TableUtils
-    """
+    """Motion ratio for pushrod suspension using pushrod -> rocker -> shock."""
     travel_vals = np.arange(travel_range[0], travel_range[1] + step, step)
     mr_vals = []
 
-    # Reference vertical positions
-    wheel_ref_z = data[2, 6]       # LCA_OUT z
-    pushrod_bot_z = data[2, 7]     # PushRodOUT z
-    shock_bot_z = data[2, 9]       # Shock_OUT z
-    shock_top_z = data[2, 10]      # Shock_IN z
+    wheel_ref_z = data[2, 6]
+    pushrod_bot_z = data[2, 7]
+    shock_bot_z = data[2, 9]
+    shock_top_z = data[2, 10]
 
     shock_ref_len = shock_top_z - shock_bot_z
 
     for dz in travel_vals:
-        # 1) Move wheel
         wheel_z_new = wheel_ref_z + dz
-
-        # 2) Move pushrod bottom with wheel
         pushrod_bot_new_z = pushrod_bot_z + dz
 
-        # 3) Approx rocker rotation → shock vertical displacement
-        # For now, assume linear relation based on geometry:
-        # shock moves less than wheel, typical pushrod MR < 1
         shock_disp = (pushrod_bot_new_z - pushrod_bot_z) * (shock_bot_z - shock_top_z) / (pushrod_bot_z - shock_top_z)
 
-        # Avoid division by zero
         mr = dz / shock_disp if abs(shock_disp) > 1e-6 else np.nan
         mr_vals.append(mr)
 
     return travel_vals, np.array(mr_vals)
-
-
