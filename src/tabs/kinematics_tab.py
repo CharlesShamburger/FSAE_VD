@@ -5,7 +5,7 @@ from matplotlib.figure import Figure
 from src.utils.plotting import PlottingUtils
 import numpy as np
 import logging
-
+from src.utils.kinematics_solver import PushrodKinematics
 
 class KinematicsTab:
     def __init__(self, parent_notebook, basic_data, pushrod_data, basic_members, pushrod_members):
@@ -88,6 +88,8 @@ class KinematicsTab:
                    command=self.calculate_camber_curve, state=tk.DISABLED).pack(fill=tk.X, pady=2)
         ttk.Button(input_frame, text="Roll Center Height",
                    command=self.calculate_roll_center).pack(fill=tk.X, pady=2)
+        ttk.Button(input_frame, text="Pushrod Kinematics",
+                   command=self.calculate_pushrod_kinematics).pack(fill=tk.X, pady=2)
 
         # Right side: Results display
         results_frame = ttk.LabelFrame(main_control_frame, text="Calculation Results", padding=10)
@@ -424,6 +426,85 @@ Results will appear here after running calculations."""
         calculator.plot_roll_center(self.kinematics_ax, data, results, susp_type)
         self.kinematics_canvas.draw()
 
+    def calculate_pushrod_kinematics(self):
+        """Calculate pushrod suspension kinematics using loop solver"""
+        try:
+            # Get travel range from inputs
+            travel_min = float(self.travel_min.get())
+            travel_max = float(self.travel_max.get())
+            step = float(self.travel_step.get())
+
+            self.logger.info(
+                f"Calculating pushrod kinematics: shock travel {travel_min} to {travel_max} mm, step {step}")
+
+            # Create solver with pushrod data
+            solver = PushrodKinematics(self.pushrod_data)
+
+            # Sweep through shock travel range
+            results = solver.sweep_shock_travel((travel_min, travel_max), step)
+
+            shock_travel = results['shock_travel']
+            vertical_disps = results['vertical_displacements']
+
+            # Calculate motion ratio (linear fit)
+            if len(shock_travel) > 1:
+                p = np.polyfit(shock_travel, vertical_disps, 1)
+                motion_ratio = p[0]  # Slope = wheel travel / shock travel
+            else:
+                motion_ratio = np.nan
+
+            # Update results text
+            result_text = "Pushrod Kinematics Results:\n"
+            result_text += "=" * 50 + "\n\n"
+            result_text += f"Shock Travel Range: {travel_min:.1f} to {travel_max:.1f} mm\n"
+            result_text += f"Step Size: {step:.1f} mm\n"
+            result_text += f"Data Points: {len(shock_travel)}\n\n"
+            result_text += f"Average Motion Ratio: {motion_ratio:.3f}\n"
+            result_text += f"  (Wheel displacement / Shock displacement)\n\n"
+            result_text += "Detailed Results:\n"
+            result_text += "-" * 50 + "\n"
+            for st, vd in zip(shock_travel, vertical_disps):
+                result_text += f"Shock: {st:6.1f} mm → Wheel: {vd:7.2f} mm\n"
+
+            self.update_kinematics_results(result_text)
+
+            # CLEAR and plot results
+            self.kinematics_ax.clear()
+            self.kinematics_ax.set_aspect('auto')
+
+            # Plot wheel travel vs shock travel
+            self.kinematics_ax.plot(shock_travel, vertical_disps, 'bo-', linewidth=2, markersize=6)
+
+            # Add linear fit line
+            if len(shock_travel) > 1:
+                fit_line = np.polyval(p, shock_travel)
+                self.kinematics_ax.plot(shock_travel, fit_line, 'r--', linewidth=1.5,
+                                        label=f'Linear Fit (MR={motion_ratio:.3f})')
+
+            self.kinematics_ax.set_xlabel('Shock Travel (mm)', fontsize=11)
+            self.kinematics_ax.set_ylabel('Wheel Vertical Displacement (mm)', fontsize=11)
+            self.kinematics_ax.set_title('Pushrod Kinematics: Wheel Travel vs Shock Travel',
+                                         fontsize=12, fontweight='bold')
+            self.kinematics_ax.grid(True, alpha=0.3)
+            self.kinematics_ax.legend()
+
+            self.kinematics_fig.tight_layout()
+            self.kinematics_canvas.draw()
+
+            self.logger.info(f"Pushrod kinematics calculated: MR={motion_ratio:.3f}, {len(shock_travel)} points")
+
+        except ValueError as e:
+            error_msg = f"Input error: {e}\nPlease check travel range values."
+            self.logger.error(error_msg)
+            self.update_kinematics_results(error_msg)
+        except RuntimeError as e:
+            error_msg = f"Solver error: {e}\nThe suspension geometry may be at a mechanical limit."
+            self.logger.error(error_msg)
+            self.update_kinematics_results(error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected error: {e}"
+            self.logger.error(error_msg)
+            self.update_kinematics_results(error_msg)
     def update_kinematics_results(self, text):
         """Update the results text area"""
         self.kinematics_results.configure(state=tk.NORMAL)
@@ -432,53 +513,3 @@ Results will appear here after running calculations."""
         self.kinematics_results.configure(state=tk.DISABLED)
 
 
-def calculate_motion_ratio_basic(data, travel_range=(-30, 30), step=1.0):
-    """Motion ratio for basic suspension (shock directly on arm)."""
-    shock_top = data[:, 4]
-    lca_out = data[:, 6]
-    shock_bot = data[:, 7]
-
-    wheel_ref_z = lca_out[2]
-    spring_ref_len = np.linalg.norm(shock_top - shock_bot)
-
-    travel_vals = np.arange(travel_range[0], travel_range[1] + step, step)
-    mr_vals = []
-
-    for dz in travel_vals:
-        lca_out_new = lca_out.copy()
-        lca_out_new[2] = wheel_ref_z + dz
-
-        shock_bot_new = shock_bot.copy()
-        shock_bot_new[2] += dz
-
-        spring_len_new = np.linalg.norm(shock_top - shock_bot_new)
-        dy = dz
-        dx = spring_ref_len - spring_len_new
-        mr = dy / dx if abs(dx) > 1e-6 else np.nan
-        mr_vals.append(mr)
-
-    return travel_vals, np.array(mr_vals)
-
-
-def calculate_motion_ratio_pushrod(data, travel_range=(-30, 30), step=1.0):
-    """Motion ratio for pushrod suspension using pushrod -> rocker -> shock."""
-    travel_vals = np.arange(travel_range[0], travel_range[1] + step, step)
-    mr_vals = []
-
-    wheel_ref_z = data[2, 6]
-    pushrod_bot_z = data[2, 7]
-    shock_bot_z = data[2, 9]
-    shock_top_z = data[2, 10]
-
-    shock_ref_len = shock_top_z - shock_bot_z
-
-    for dz in travel_vals:
-        wheel_z_new = wheel_ref_z + dz
-        pushrod_bot_new_z = pushrod_bot_z + dz
-
-        shock_disp = (pushrod_bot_new_z - pushrod_bot_z) * (shock_bot_z - shock_top_z) / (pushrod_bot_z - shock_top_z)
-
-        mr = dz / shock_disp if abs(shock_disp) > 1e-6 else np.nan
-        mr_vals.append(mr)
-
-    return travel_vals, np.array(mr_vals)

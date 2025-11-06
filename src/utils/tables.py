@@ -17,7 +17,7 @@ class TableUtils:
                          'Shock_Top', 'UCA_OUT', 'LCA_OUT', 'Shock_Bottom']
         pushrod_columns = ['UCA_FrontIN', 'UCA_RearIN', 'LCA_FrontIN', 'LCA_RearIN',
                            'PushRodIN', 'UCA_OUT', 'LCA_OUT', 'PushRodOUT',
-                           'Cam_Hinge', 'Shock_OUT', 'Shock_IN']
+                           'Cam_Hinge', 'Shock_OUT', 'Shock_IN', 'Wheel_Center']
 
         # Setup Basic Suspension Table
         self.setup_basic_table(table_notebook, basic_columns)
@@ -31,14 +31,23 @@ class TableUtils:
         basic_frame = ttk.Frame(parent_notebook)
         parent_notebook.add(basic_frame, text="Basic Suspension")
 
-        # Create treeview (this is tkinter's table widget)
-        self.basic_tree = ttk.Treeview(basic_frame)
-        self.basic_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
+        # Create HORIZONTAL scrollbar first (at bottom)
+        basic_hscroll = ttk.Scrollbar(basic_frame, orient=tk.HORIZONTAL)
+        basic_hscroll.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # Add scrollbar
-        basic_scroll = ttk.Scrollbar(basic_frame, orient=tk.VERTICAL, command=self.basic_tree.yview)
-        basic_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.basic_tree.configure(yscrollcommand=basic_scroll.set)
+        # Create VERTICAL scrollbar (at right)
+        basic_vscroll = ttk.Scrollbar(basic_frame, orient=tk.VERTICAL)
+        basic_vscroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Create treeview (this is tkinter's table widget)
+        self.basic_tree = ttk.Treeview(basic_frame,
+                                        yscrollcommand=basic_vscroll.set,
+                                        xscrollcommand=basic_hscroll.set)
+        self.basic_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Configure scrollbars to control treeview
+        basic_vscroll.config(command=self.basic_tree.yview)
+        basic_hscroll.config(command=self.basic_tree.xview)
 
         # Setup columns - add "Coord" column first, then the point names
         all_columns = ["Coord"] + columns[:self.basic_data.shape[1]]
@@ -71,16 +80,25 @@ class TableUtils:
         pushrod_frame = ttk.Frame(parent_notebook)
         parent_notebook.add(pushrod_frame, text="Pushrod Suspension")
 
+        # Create HORIZONTAL scrollbar first (at bottom)
+        pushrod_hscroll = ttk.Scrollbar(pushrod_frame, orient=tk.HORIZONTAL)
+        pushrod_hscroll.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Create VERTICAL scrollbar (at right)
+        pushrod_vscroll = ttk.Scrollbar(pushrod_frame, orient=tk.VERTICAL)
+        pushrod_vscroll.pack(side=tk.RIGHT, fill=tk.Y)
+
         # Create treeview
-        self.pushrod_tree = ttk.Treeview(pushrod_frame)
-        self.pushrod_tree.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
+        self.pushrod_tree = ttk.Treeview(pushrod_frame,
+                                          yscrollcommand=pushrod_vscroll.set,
+                                          xscrollcommand=pushrod_hscroll.set)
+        self.pushrod_tree.pack(fill=tk.BOTH, expand=True)
 
-        # Add scrollbar
-        pushrod_scroll = ttk.Scrollbar(pushrod_frame, orient=tk.VERTICAL, command=self.pushrod_tree.yview)
-        pushrod_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.pushrod_tree.configure(yscrollcommand=pushrod_scroll.set)
+        # Configure scrollbars to control treeview
+        pushrod_vscroll.config(command=self.pushrod_tree.yview)
+        pushrod_hscroll.config(command=self.pushrod_tree.xview)
 
-        # Setup columns
+        # Setup columns - add "Coord" column first, then the point names
         all_columns = ["Coord"] + columns[:self.pushrod_data.shape[1]]
         self.pushrod_tree["columns"] = all_columns
         self.pushrod_tree["show"] = "headings"
