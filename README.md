@@ -7,7 +7,7 @@ This application visualizes FSAE suspension geometry using data from an Excel fi
 The application has been restructured into a modular architecture:
 
 ```
-PythonProject/
+FSAE_VD/
 ├── main.py                 # Entry point
 ├── src/
 │   ├── __init__.py
@@ -22,7 +22,7 @@ PythonProject/
 │       ├── __init__.py
 │       ├── plotting.py        # 3D plotting utilities
 │       └── tables.py          # Interactive table utilities
-├── FSAE_Vehicle_Dynamics.py   # Original monolithic script
+├── Motion_Ratio.py         # Motion ratio calculation script
 └── README.md
 ```
 
