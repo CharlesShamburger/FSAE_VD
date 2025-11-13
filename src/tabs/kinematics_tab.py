@@ -3,6 +3,8 @@ from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import logging
+import numpy as np
+from ..calculations.motion_ratio_calculator import MotionRatioCalculator
 
 
 class KinematicsTab:
@@ -76,15 +78,35 @@ class KinematicsTab:
         self.travel_step.pack(anchor=tk.W)
         self.travel_step.insert(0, "5")
 
+        # Shock travel range inputs (for motion ratio)
+        ttk.Label(input_frame, text="Shock Travel Range (in):").pack(anchor=tk.W, pady=(10, 5))
+
+        shock_travel_frame = ttk.Frame(input_frame)
+        shock_travel_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(shock_travel_frame, text="From:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        self.shock_min = ttk.Entry(shock_travel_frame, width=8)
+        self.shock_min.grid(row=0, column=1, padx=(0, 10))
+        self.shock_min.insert(0, "-1.5")
+
+        ttk.Label(shock_travel_frame, text="To:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
+        self.shock_max = ttk.Entry(shock_travel_frame, width=8)
+        self.shock_max.grid(row=0, column=3)
+        self.shock_max.insert(0, "1.5")
+
+        ttk.Label(input_frame, text="Shock step size (in):").pack(anchor=tk.W, pady=(10, 5))
+        self.shock_step = ttk.Entry(input_frame, width=8)
+        self.shock_step.pack(anchor=tk.W)
+        self.shock_step.insert(0, "0.1")
+
         # Placeholder for calculation buttons
         ttk.Separator(input_frame, orient='horizontal').pack(fill=tk.X, pady=10)
         ttk.Label(input_frame, text="Calculations:").pack(anchor=tk.W, pady=5)
 
-        # Add your calculation buttons here as you implement them
-        placeholder_label = ttk.Label(input_frame,
-                                      text="Calculation buttons will go here",
-                                      foreground='gray')
-        placeholder_label.pack(pady=20)
+        # Add calculation buttons
+        self.motion_ratio_btn = ttk.Button(input_frame, text="Calculate Motion Ratio",
+                                           command=self.calculate_motion_ratio)
+        self.motion_ratio_btn.pack(pady=5)
 
         # Right side: Results display
         results_frame = ttk.LabelFrame(main_control_frame, text="Results", padding=10)
@@ -161,6 +183,68 @@ Calculation results will appear here.
                               fontsize=14, color='gray')
         self.analysis_ax.set_axis_off()
         self.analysis_canvas.draw()
+
+    def calculate_motion_ratio(self):
+        """Calculate motion ratio using 2D geometry"""
+        try:
+            # Get shock travel parameters
+            shock_min = float(self.shock_min.get())
+            shock_max = float(self.shock_max.get())
+            shock_step = float(self.shock_step.get())
+
+            # Use the calculator
+            calculator = MotionRatioCalculator()
+            results = calculator.calculate_motion_ratio(shock_min, shock_max, shock_step)
+
+            avg_motion_ratio = results['avg_motion_ratio']
+            shock_displacements = results['shock_displacements']
+            wheel_displacements = results['wheel_displacements']
+            motion_ratio = results['motion_ratio']
+            wheel_travel_mid = results['wheel_travel_mid']
+            shock_step = results['shock_step']
+
+            # Update results text
+            results_text = f"""Motion Ratio Analysis
+
+Average Motion Ratio = {avg_motion_ratio:.3f} (shock travel / wheel travel)
+Interpretation: Shock moves {avg_motion_ratio:.3f} inches for every 1 inch of wheel travel
+HIGHER number = MORE shock travel = stiffer feeling suspension
+LOWER number = LESS shock travel = softer feeling suspension
+
+Shock travel range: {shock_displacements[0]:.3f} to {shock_displacements[-1]:.3f} in
+Wheel travel range: {wheel_displacements[0]:.3f} to {wheel_displacements[-1]:.3f} in
+Motion ratio range: {motion_ratio.min():.3f} to {motion_ratio.max():.3f}
+
+Number of points: {len(shock_displacements)}
+Step size: {shock_step:.3f}
+"""
+            self.update_results(results_text)
+
+            # Plot motion ratio vs wheel travel
+            self.analysis_ax.clear()
+            self.analysis_ax.set_axis_on()
+            self.analysis_ax.plot(wheel_travel_mid, motion_ratio, 'b-', linewidth=2, label='Motion Ratio')
+            self.analysis_ax.axhline(y=avg_motion_ratio, color='r', linestyle='--', linewidth=1.5,
+                                    label=f'Avg = {avg_motion_ratio:.3f}')
+            self.analysis_ax.grid(True)
+            self.analysis_ax.set_xlabel('Wheel Vertical Travel (in)')
+            self.analysis_ax.set_ylabel('Motion Ratio (shock travel / wheel travel)')
+            self.analysis_ax.set_title('Motion Ratio vs Wheel Travel')
+            self.analysis_ax.legend()
+
+            # Add text box
+            textstr = f'Avg MR = {avg_motion_ratio:.3f}\nHigher MR → More shock travel\nLower MR → Less shock travel'
+            props = dict(boxstyle='round', facecolor='white', edgecolor='black', alpha=0.8)
+            self.analysis_ax.text(0.05, 0.95, textstr, transform=self.analysis_ax.transAxes, fontsize=10,
+                                 verticalalignment='top', bbox=props)
+
+            self.analysis_fig.tight_layout()
+            self.analysis_canvas.draw()
+
+        except Exception as e:
+            self.logger.error(f"Error in motion ratio calculation: {e}")
+            self.update_results(f"Error: {e}")
+            self.clear_plot()
 
     # Add your calculation methods here as you implement them
     # Example structure:
