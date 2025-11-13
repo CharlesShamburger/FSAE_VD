@@ -50,19 +50,19 @@ class MotionRatioCalculator:
 
         return th_Unknown1, th_Unknown2
 
-    def calculate_motion_ratio(self, shock_min, shock_max, shock_step):
+    def calculate_motion_ratio(self, shock_min, shock_max, shock_step, points):
         """Calculate motion ratio using 2D geometry"""
-        # Define 2D Suspension Coordinates (Y-Z Plane) in inches
-        UCA_IN = np.array([9.812, 8.875])
-        LCA_IN = np.array([10, 4])
-        PushRodIN = np.array([8, 14.75])
-        UCA_OUT = np.array([19, 11.875])
-        LCA_OUT = np.array([20.625, 5.125])
-        PushRodOUT = np.array([20, 5])
-        Cam_Hinge = np.array([6.5, 13])
-        Shock_OUT = np.array([5, 15])
-        Shock_IN = np.array([1, 12])
-        Wheel_center = np.array([24, 8.5])
+        # Extract points from the points dictionary
+        UCA_IN = points['UCA_IN']
+        LCA_IN = points['LCA_IN']
+        PushRodIN = points['PushRodIN']
+        UCA_OUT = points['UCA_OUT']
+        LCA_OUT = points['LCA_OUT']
+        PushRodOUT = points['PushRodOUT']
+        Cam_Hinge = points['Cam_Hinge']
+        Shock_OUT = points['Shock_OUT']
+        Shock_IN = points['Shock_IN']
+        Wheel_center = points['Wheel_center']
 
         branch = 1
 

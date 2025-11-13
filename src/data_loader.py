@@ -57,3 +57,62 @@ class DataLoader:
             (5, 11),  # UCA_OUT → Wheel_Center
             (6, 11),  # LCA_OUT → Wheel_Center
         ]
+
+    def get_2d_points(self, suspension_type='pushrod'):
+        """
+        Calculate 2D Y-Z projections for kinematics analysis.
+        Returns a dictionary of 2D points (Y, Z) for the specified suspension.
+
+        Args:
+            suspension_type: 'basic' or 'pushrod'
+
+        Returns:
+            dict: Dictionary with point names as keys and [Y, Z] arrays as values
+        """
+        if suspension_type == 'basic':
+            data = self.basic_data
+            # Column indices for basic suspension
+            points = {
+                'UCA_IN': self._calculate_effective_point(data, [0, 1]),  # Average of front and rear UCA inboard
+                'LCA_IN': self._calculate_effective_point(data, [2, 3]),  # Average of front and rear LCA inboard
+                'PushRodIN': np.array([data[1, 4], data[2, 4]]),
+                'UCA_OUT': np.array([data[1, 5], data[2, 5]]),
+                'LCA_OUT': np.array([data[1, 6], data[2, 6]]),
+                'PushRodOUT': np.array([data[1, 7], data[2, 7]]),
+                'Wheel_center': np.array([data[1, 8], data[2, 8]])
+            }
+        else:  # pushrod
+            data = self.pushrod_data
+            # Column indices for pushrod suspension
+            points = {
+                'UCA_IN': self._calculate_effective_point(data, [0, 1]),  # Average of front and rear UCA inboard
+                'LCA_IN': self._calculate_effective_point(data, [2, 3]),  # Average of front and rear LCA inboard
+                'PushRodIN': np.array([data[1, 4], data[2, 4]]),
+                'UCA_OUT': np.array([data[1, 5], data[2, 5]]),
+                'LCA_OUT': np.array([data[1, 6], data[2, 6]]),
+                'PushRodOUT': np.array([data[1, 7], data[2, 7]]),
+                'Cam_Hinge': np.array([data[1, 8], data[2, 8]]),
+                'Shock_OUT': np.array([data[1, 9], data[2, 9]]),
+                'Shock_IN': np.array([data[1, 10], data[2, 10]]),
+                'Wheel_center': np.array([data[1, 11], data[2, 11]])
+            }
+
+        return points
+
+    def _calculate_effective_point(self, data, indices):
+        """
+        Calculate effective 2D point for control arms that have front and rear mounts.
+        Uses centroid of the mounting points projected onto Y-Z plane.
+
+        Args:
+            data: 3D coordinate array (3 x N)
+            indices: list of column indices to average (e.g., [0, 1] for front and rear UCA)
+
+        Returns:
+            np.array: [Y, Z] coordinates
+        """
+        # Average the Y and Z coordinates
+        y_avg = np.mean([data[1, i] for i in indices])
+        z_avg = np.mean([data[2, i] for i in indices])
+
+        return np.array([y_avg, z_avg])
