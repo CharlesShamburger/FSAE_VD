@@ -4,6 +4,7 @@ from src.data_loader import DataLoader
 from src.tabs.geometry_tab import GeometryTab
 from src.tabs.kinematics_tab import KinematicsTab
 from src.tabs.analysis_tab import AnalysisTab
+from src.tabs.load_conditions_tab import LoadConditionsTab
 
 
 class SuspensionApp:
@@ -26,6 +27,7 @@ class SuspensionApp:
         # Create all tabs
         self.geometry_tab = GeometryTab(self.notebook, self.basic_data, self.pushrod_data, self.basic_members, self.pushrod_members)
         self.kinematics_tab = KinematicsTab(self.notebook, self.basic_data, self.pushrod_data, self.basic_members, self.pushrod_members)
+        self.load_conditions_tab = LoadConditionsTab(self.notebook, self.data_loader)
         self.analysis_tab = AnalysisTab(self.notebook)
 
         # Initial plot
