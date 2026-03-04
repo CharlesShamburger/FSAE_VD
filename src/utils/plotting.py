@@ -15,20 +15,29 @@ class PlottingUtils:
         self.pushrod_data_right = pushrod_data_right
 
         # Create matplotlib figure
-        self.fig = Figure(figsize=(10, 6), dpi=100)
+        self.fig = Figure(figsize=(20, 15), dpi=100)
         self.ax = self.fig.add_subplot(111, projection='3d')
 
-        # Embed plot in tkinter
+        # Embed plot in tkinter FIRST
         self.canvas = FigureCanvasTkAgg(self.fig, master=parent)
         self.canvas.draw()
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        # Add matplotlib toolbar
+        # Toolbar BEFORE packing canvas (reserves space at bottom)
         toolbar_frame = tk.Frame(parent)
         toolbar_frame.pack(side=tk.BOTTOM, fill=tk.X)
-
         toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         toolbar.update()
+
+        # Now pack canvas to fill remaining space
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.canvas.get_tk_widget().bind("<Configure>", self._on_resize)
+
+    def _on_resize(self, event):
+        self.fig.set_size_inches(event.width / self.fig.dpi,
+                                 event.height / self.fig.dpi)
+        self.fig.tight_layout()
+        self.canvas.draw_idle()
+
 
     def plot_suspension_side(self, data, members, color, alpha=0.8, linewidth=2):
         """Plot one side of suspension"""
