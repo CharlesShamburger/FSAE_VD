@@ -314,8 +314,80 @@ Results will appear here.
         toolbar_frame_2d.pack(side=tk.BOTTOM, fill=tk.X)
         NavigationToolbar2Tk(self.canvas_2d, toolbar_frame_2d)
 
+        # Custom Variable Plot
+        custom_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(custom_frame, text="Custom Plot")
+
+        # Controls row at top
+        controls_row = ttk.Frame(custom_frame)
+        controls_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+        VARIABLES = ["SA", "FZ", "FY", "FX", "ET", "P", "V"]
+
+        ttk.Label(controls_row, text="X Axis:").pack(side=tk.LEFT, padx=(0, 4))
+        self.custom_x_var = tk.StringVar(value="SA")
+        x_dropdown = ttk.Combobox(controls_row, textvariable=self.custom_x_var,
+                                  values=VARIABLES, state="readonly", width=8)
+        x_dropdown.pack(side=tk.LEFT, padx=(0, 12))
+
+        ttk.Label(controls_row, text="Y Axis:").pack(side=tk.LEFT, padx=(0, 4))
+        self.custom_y_var = tk.StringVar(value="FY")
+        y_dropdown = ttk.Combobox(controls_row, textvariable=self.custom_y_var,
+                                  values=VARIABLES, state="readonly", width=8)
+        y_dropdown.pack(side=tk.LEFT, padx=(0, 12))
+
+        # Data source toggle
+        ttk.Label(controls_row, text="Data:").pack(side=tk.LEFT, padx=(0, 4))
+        self.custom_data_source = tk.StringVar(value="filtered")
+        ttk.Radiobutton(controls_row, text="Filtered", variable=self.custom_data_source,
+                        value="filtered").pack(side=tk.LEFT)
+        ttk.Radiobutton(controls_row, text="Raw", variable=self.custom_data_source,
+                        value="raw").pack(side=tk.LEFT, padx=(4, 12))
+
+        ttk.Button(controls_row, text="Plot", command=self.plot_custom).pack(side=tk.LEFT)
+
+        # Plot area
+        self.fig_custom = Figure(figsize=(8, 6), dpi=100)
+        self.ax_custom = self.fig_custom.add_subplot(111)
+        self.canvas_custom = FigureCanvasTkAgg(self.fig_custom, master=custom_frame)
+        self.canvas_custom.draw()
+        self.canvas_custom.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        toolbar_frame_custom = ttk.Frame(custom_frame)
+        toolbar_frame_custom.pack(side=tk.BOTTOM, fill=tk.X)
+        NavigationToolbar2Tk(self.canvas_custom, toolbar_frame_custom)
+
         # Initial empty plots
         self.clear_all_plots()
+
+    def plot_custom(self):
+        """Plot any two variables against each other"""
+        x_key = self.custom_x_var.get()
+        y_key = self.custom_y_var.get()
+        source = self.custom_data_source.get()
+
+        data = self.filtered_data if source == "filtered" else self.raw_data
+
+        if data is None:
+            messagebox.showwarning("Warning", "No data loaded. Load and optionally filter data first.")
+            return
+
+        x_data = data.get(x_key)
+        y_data = data.get(y_key)
+
+        if x_data is None or y_data is None:
+            messagebox.showwarning("Warning", f"Variable not available in loaded data.")
+            return
+
+        self.ax_custom.clear()
+        self.ax_custom.scatter(x_data, y_data, s=1, alpha=0.4, color='steelblue')
+        self.ax_custom.set_xlabel(x_key)
+        self.ax_custom.set_ylabel(y_key)
+        self.ax_custom.set_title(f"{y_key} vs {x_key}  ({source} data, {len(x_data):,} pts)")
+        self.ax_custom.grid(True, alpha=0.3)
+        self.fig_custom.tight_layout()
+        self.canvas_custom.draw()
+
 
     def browse_file(self):
         """Browse for .mat file"""
@@ -612,6 +684,13 @@ This represents the peak cornering grip available at this load.
                         fontsize=14, color='gray')
         self.ax_2d.set_axis_off()
         self.canvas_2d.draw()
+
+        self.ax_custom.clear()
+        self.ax_custom.text(0.5, 0.5, 'Select variables and click Plot',
+                            ha='center', va='center', transform=self.ax_custom.transAxes,
+                            fontsize=13, color='gray')
+        self.ax_custom.set_axis_off()
+        self.canvas_custom.draw()
 
     def update_results(self, text):
         """Update results text area"""
