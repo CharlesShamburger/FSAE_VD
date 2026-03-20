@@ -89,7 +89,7 @@ class VehicleParams:
     AERO_BALANCE        = 0        # %   | front aero balance e.g. 0.45 = 45% front
 
     # ── DRIVETRAIN ────────────────────────────────────────────────────────────
-    DRIVETRAIN          = ""       # str | e.g. "RWD", "AWD"
+    DRIVETRAIN          = "RWD"       # str | e.g. "RWD", "AWD"
     FINAL_DRIVE_RATIO   = 0        # --  | overall final drive ratio
     ENGINE_MAX_TORQUE   = 0        # lb·ft | peak engine torque
 

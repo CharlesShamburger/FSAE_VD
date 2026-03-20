@@ -1,52 +1,59 @@
+"""
+src/tabs/kinematics_tab.py
+
+Kinematics analysis tab.  Each calculator has its own button and
+produces its own plot + results text.  All three share the same
+shock-travel sweep under the hood via suspension_sweep.py.
+"""
+
 import tkinter as tk
 from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import logging
 import numpy as np
+
 from ..calculations.motion_ratio_calculator import MotionRatioCalculator
+from ..calculations.camber_gain import CamberGainCalculator
+from ..calculations.roll_center import RollCenterCalculator
 
 
 class KinematicsTab:
-    def __init__(self, parent_notebook, basic_data, pushrod_data, basic_members, pushrod_members):
-        self.basic_data = basic_data
-        self.pushrod_data = pushrod_data
-        self.basic_members = basic_members
+    def __init__(self, parent_notebook, basic_data, pushrod_data,
+                 basic_members, pushrod_members):
+        self.basic_data     = basic_data
+        self.pushrod_data   = pushrod_data
+        self.basic_members  = basic_members
         self.pushrod_members = pushrod_members
-
-        # Setup logging
         self.logger = logging.getLogger(__name__)
 
         self.kinematics_frame = ttk.Frame(parent_notebook)
         parent_notebook.add(self.kinematics_frame, text="Kinematics")
 
-        # Create main layout (vertical split)
         kinematics_paned = ttk.PanedWindow(self.kinematics_frame, orient=tk.VERTICAL)
         kinematics_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Top section: Controls and results
-        top_frame = ttk.Frame(kinematics_paned)
+        top_frame  = ttk.Frame(kinematics_paned)
         kinematics_paned.add(top_frame, weight=0)
 
-        # Bottom section: Analysis plot only
         plot_frame = ttk.LabelFrame(kinematics_paned, text="Analysis Results", padding=5)
         kinematics_paned.add(plot_frame, weight=1)
 
-        # Setup sections
         self.setup_controls(top_frame)
         self.setup_analysis_plot(plot_frame)
 
+    # ── Controls ──────────────────────────────────────────────────────────────
+
     def setup_controls(self, parent):
-        """Setup control panel for kinematics analysis"""
-        # Create horizontal layout for controls and results
         main_control_frame = ttk.Frame(parent)
         main_control_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Left side: Input controls
-        input_frame = ttk.LabelFrame(main_control_frame, text="Analysis Parameters", padding=10)
+        # ── Left: parameter inputs ────────────────────────────────────────────
+        input_frame = ttk.LabelFrame(main_control_frame,
+                                     text="Analysis Parameters", padding=10)
         input_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 5))
 
-        # Suspension selection
+        # Suspension type
         ttk.Label(input_frame, text="Suspension Type:").pack(anchor=tk.W, pady=5)
         self.suspension_type = tk.StringVar(value="pushrod")
         ttk.Radiobutton(input_frame, text="Basic Suspension",
@@ -54,43 +61,20 @@ class KinematicsTab:
         ttk.Radiobutton(input_frame, text="Pushrod Suspension",
                         variable=self.suspension_type, value="pushrod").pack(anchor=tk.W)
 
-        # Separator
         ttk.Separator(input_frame, orient='horizontal').pack(fill=tk.X, pady=10)
 
-        # Travel range inputs
-        ttk.Label(input_frame, text="Travel Range (mm):").pack(anchor=tk.W, pady=5)
+        # Shock travel inputs (motion ratio / camber / RC all use these)
+        ttk.Label(input_frame, text="Shock Travel Range (in):").pack(anchor=tk.W, pady=5)
+        shock_frame = ttk.Frame(input_frame)
+        shock_frame.pack(fill=tk.X, pady=5)
 
-        travel_frame = ttk.Frame(input_frame)
-        travel_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Label(travel_frame, text="From:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.travel_min = ttk.Entry(travel_frame, width=8)
-        self.travel_min.grid(row=0, column=1, padx=(0, 10))
-        self.travel_min.insert(0, "-25")
-
-        ttk.Label(travel_frame, text="To:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
-        self.travel_max = ttk.Entry(travel_frame, width=8)
-        self.travel_max.grid(row=0, column=3)
-        self.travel_max.insert(0, "75")
-
-        ttk.Label(input_frame, text="Step size (mm):").pack(anchor=tk.W, pady=(10, 5))
-        self.travel_step = ttk.Entry(input_frame, width=8)
-        self.travel_step.pack(anchor=tk.W)
-        self.travel_step.insert(0, "5")
-
-        # Shock travel range inputs (for motion ratio)
-        ttk.Label(input_frame, text="Shock Travel Range (in):").pack(anchor=tk.W, pady=(10, 5))
-
-        shock_travel_frame = ttk.Frame(input_frame)
-        shock_travel_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Label(shock_travel_frame, text="From:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.shock_min = ttk.Entry(shock_travel_frame, width=8)
+        ttk.Label(shock_frame, text="From:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        self.shock_min = ttk.Entry(shock_frame, width=8)
         self.shock_min.grid(row=0, column=1, padx=(0, 10))
         self.shock_min.insert(0, "-1.5")
 
-        ttk.Label(shock_travel_frame, text="To:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
-        self.shock_max = ttk.Entry(shock_travel_frame, width=8)
+        ttk.Label(shock_frame, text="To:").grid(row=0, column=2, sticky=tk.W, padx=(0, 5))
+        self.shock_max = ttk.Entry(shock_frame, width=8)
         self.shock_max.grid(row=0, column=3)
         self.shock_max.insert(0, "1.5")
 
@@ -99,234 +83,335 @@ class KinematicsTab:
         self.shock_step.pack(anchor=tk.W)
         self.shock_step.insert(0, "0.1")
 
-        # Placeholder for calculation buttons
         ttk.Separator(input_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        ttk.Label(input_frame, text="Calculations:").pack(anchor=tk.W, pady=5)
 
-        # Add calculation buttons
-        self.motion_ratio_btn = ttk.Button(input_frame, text="Calculate Motion Ratio",
-                                           command=self.calculate_motion_ratio)
-        self.motion_ratio_btn.pack(pady=5)
+        #Static Camber
+        ttk.Label(input_frame, text="Static Camber (deg):").pack(anchor=tk.W, pady=(10, 5))
+        self.static_camber = ttk.Entry(input_frame, width=8)
+        self.static_camber.pack(anchor=tk.W)
+        self.static_camber.insert(0, "0.0")
 
-        # Right side: Results display
+        # ── Calculation buttons ───────────────────────────────────────────────
+        ttk.Label(input_frame, text="Calculations:").pack(anchor=tk.W, pady=(0, 5))
+
+        self.motion_ratio_btn = ttk.Button(
+            input_frame, text="Motion Ratio",
+            command=self.calculate_motion_ratio)
+        self.motion_ratio_btn.pack(fill=tk.X, pady=3)
+
+        self.camber_gain_btn = ttk.Button(
+            input_frame, text="Camber Gain",
+            command=self.calculate_camber_gain)
+        self.camber_gain_btn.pack(fill=tk.X, pady=3)
+
+        self.roll_center_btn = ttk.Button(
+            input_frame, text="Roll Center Height",
+            command=self.calculate_roll_center)
+        self.roll_center_btn.pack(fill=tk.X, pady=3)
+
+        ttk.Separator(input_frame, orient='horizontal').pack(fill=tk.X, pady=10)
+
+        self.run_all_btn = ttk.Button(
+            input_frame, text="▶  Run All",
+            command=self.run_all)
+        self.run_all_btn.pack(fill=tk.X, pady=3)
+
+        # ── Right: results text ───────────────────────────────────────────────
         results_frame = ttk.LabelFrame(main_control_frame, text="Results", padding=10)
         results_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
 
-        # Create text widget for results
         result_scroll = ttk.Scrollbar(results_frame, orient=tk.VERTICAL)
         result_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.results_text = tk.Text(results_frame, height=15, wrap=tk.WORD,
-                                    yscrollcommand=result_scroll.set)
+                                    yscrollcommand=result_scroll.set,
+                                    font=("Courier", 9))
         self.results_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         result_scroll.config(command=self.results_text.yview)
 
-        # Default content
-        default_text = """FSAE Kinematics Analysis
-
-Select suspension type and travel range above.
-
-Calculation results will appear here.
-"""
-        self.results_text.insert(tk.END, default_text)
+        self.results_text.insert(tk.END,
+            "FSAE Kinematics Analysis\n\n"
+            "Select suspension type and adjust shock travel range,\n"
+            "then click a calculation button.\n\n"
+            "All three calculations share the same sweep loop —\n"
+            "'Run All' computes everything in one pass.\n"
+        )
         self.results_text.configure(state=tk.DISABLED)
 
+    # ── Plot area ─────────────────────────────────────────────────────────────
+
     def setup_analysis_plot(self, parent):
-        """Setup analysis results plot"""
-        # Create matplotlib figure for analysis plots
-        self.analysis_fig = Figure(figsize=(10, 5), dpi=100)
-        self.analysis_ax = self.analysis_fig.add_subplot(111)
+        # Notebook so we can have separate tabs per result type
+        self.plot_notebook = ttk.Notebook(parent)
+        self.plot_notebook.pack(fill=tk.BOTH, expand=True)
 
-        # Embed in tkinter
-        self.analysis_canvas = FigureCanvasTkAgg(self.analysis_fig, master=parent)
-        self.analysis_canvas.draw()
-        self.analysis_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # Motion ratio plot
+        mr_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(mr_frame, text="Motion Ratio")
+        self.mr_fig = Figure(figsize=(10, 4), dpi=100)
+        self.mr_ax  = self.mr_fig.add_subplot(111)
+        self.mr_canvas = FigureCanvasTkAgg(self.mr_fig, master=mr_frame)
+        self.mr_canvas.draw()
+        self.mr_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        tb_frame = ttk.Frame(mr_frame)
+        tb_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        NavigationToolbar2Tk(self.mr_canvas, tb_frame).update()
 
-        # Add toolbar
-        toolbar_frame = ttk.Frame(parent)
-        toolbar_frame.pack(side=tk.BOTTOM, fill=tk.X)
-        toolbar = NavigationToolbar2Tk(self.analysis_canvas, toolbar_frame)
-        toolbar.update()
+        # Camber gain plot
+        cg_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(cg_frame, text="Camber Gain")
+        self.cg_fig = Figure(figsize=(10, 4), dpi=100)
+        self.cg_ax  = self.cg_fig.add_subplot(111)
+        self.cg_canvas = FigureCanvasTkAgg(self.cg_fig, master=cg_frame)
+        self.cg_canvas.draw()
+        self.cg_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        tb_frame2 = ttk.Frame(cg_frame)
+        tb_frame2.pack(side=tk.BOTTOM, fill=tk.X)
+        NavigationToolbar2Tk(self.cg_canvas, tb_frame2).update()
 
-        # Initial empty plot
-        self.analysis_ax.text(0.5, 0.5, 'Analysis results will appear here',
-                              ha='center', va='center', transform=self.analysis_ax.transAxes,
-                              fontsize=14, color='gray')
-        self.analysis_ax.set_axis_off()
-        self.analysis_canvas.draw()
+        # Roll center plot
+        rc_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(rc_frame, text="Roll Center")
+        self.rc_fig = Figure(figsize=(10, 4), dpi=100)
+        self.rc_ax  = self.rc_fig.add_subplot(111)
+        self.rc_canvas = FigureCanvasTkAgg(self.rc_fig, master=rc_frame)
+        self.rc_canvas.draw()
+        self.rc_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        tb_frame3 = ttk.Frame(rc_frame)
+        tb_frame3.pack(side=tk.BOTTOM, fill=tk.X)
+        NavigationToolbar2Tk(self.rc_canvas, tb_frame3).update()
 
-    # Utility methods for your future calculations
+        self._init_empty_plots()
+
+    # ── Public calculation methods ────────────────────────────────────────────
+
+    def calculate_motion_ratio(self):
+        try:
+            shock_min, shock_max, shock_step = self._get_shock_params()
+            points = self._get_points()
+
+            calc    = MotionRatioCalculator()
+            results = calc.calculate_motion_ratio(shock_min, shock_max, shock_step, points)
+
+            avg_mr       = results['avg_motion_ratio']
+            shock_disp   = results['shock_displacements']
+            wheel_disp   = results['wheel_displacements']
+            motion_ratio = results['motion_ratio']
+            wt_mid       = results['wheel_travel_mid']
+
+            # Results text
+            self.update_results(
+                f"Motion Ratio Analysis\n"
+                f"{'─'*40}\n"
+                f"Average MR:   {avg_mr:.4f}  (shock in / wheel in)\n"
+                f"  → shock moves {avg_mr:.4f} in per 1 in of wheel travel\n\n"
+                f"Shock range:  {shock_disp[0]:.3f} → {shock_disp[-1]:.3f} in\n"
+                f"Wheel range:  {wheel_disp[0]:.3f} → {wheel_disp[-1]:.3f} in\n"
+                f"MR range:     {np.nanmin(motion_ratio):.4f} → {np.nanmax(motion_ratio):.4f}\n"
+                f"Steps:        {len(shock_disp)}\n\n"
+                f"Higher MR → more shock travel → stiffer feel\n"
+                f"Lower  MR → less shock travel → softer feel\n"
+            )
+
+            # Plot
+            self.mr_ax.clear()
+            self.mr_ax.plot(wt_mid, motion_ratio, 'b-', linewidth=2, label='Motion Ratio')
+            self.mr_ax.axhline(avg_mr, color='r', linestyle='--', linewidth=1.5,
+                               label=f'Avg = {avg_mr:.4f}')
+            self.mr_ax.set_xlabel('Wheel Vertical Travel (in)')
+            self.mr_ax.set_ylabel('Motion Ratio (shock / wheel)')
+            self.mr_ax.set_title('Motion Ratio vs Wheel Travel')
+            self.mr_ax.legend()
+            self.mr_ax.grid(True, alpha=0.3)
+            self._add_textbox(self.mr_ax,
+                              f'Avg MR = {avg_mr:.4f}\n'
+                              f'Higher → more shock travel\n'
+                              f'Lower  → less shock travel')
+            self.mr_fig.tight_layout()
+            self.mr_canvas.draw()
+
+            # Switch to this plot tab
+            self.plot_notebook.select(0)
+
+        except Exception as e:
+            self.logger.error(f"Motion ratio error: {e}", exc_info=True)
+            self.update_results(f"Error in motion ratio:\n{e}")
+
+    def calculate_camber_gain(self):
+        try:
+            shock_min, shock_max, shock_step = self._get_shock_params()
+            points = self._get_points()
+
+            calc    = CamberGainCalculator()
+            static_cam = float(self.static_camber.get())
+            results = calc.calculate_camber_gain(shock_min, shock_max, shock_step, points, static_camber=static_cam)
+
+            camber      = results['camber_angles']
+            wheel       = results['wheel_displacements']
+            cg          = results['camber_gain']
+            wt_mid      = results['wheel_travel_mid']
+            avg_cg      = results['avg_camber_gain']
+            static_cam  = results['static_camber']
+
+            self.update_results(
+                f"Camber Gain Analysis\n"
+                f"{'─'*40}\n"
+                f"Static camber:   {static_cam:+.4f} deg\n"
+                f"  (neg = top inboard, FSAE convention)\n\n"
+                f"Average gain:    {avg_cg:+.4f} deg/in\n"
+                f"  (neg gain = more negative camber in bump — desirable)\n\n"
+                f"Camber range:    {camber.min():+.4f} → {camber.max():+.4f} deg\n"
+                f"Wheel range:     {wheel.min():.3f} → {wheel.max():.3f} in\n"
+                f"Gain range:      {np.nanmin(cg):+.4f} → {np.nanmax(cg):+.4f} deg/in\n"
+            )
+
+            # Plot 1: camber angle vs wheel travel
+            self.cg_ax.clear()
+            self.cg_ax.plot(wheel, camber, 'g-', linewidth=2, label='Camber Angle')
+            self.cg_ax.axhline(static_cam, color='k', linestyle=':', linewidth=1,
+                               label=f'Static = {static_cam:+.3f}°')
+            self.cg_ax.axvline(0, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+            self.cg_ax.set_xlabel('Wheel Vertical Travel (in)')
+            self.cg_ax.set_ylabel('Camber Angle (deg)')
+            self.cg_ax.set_title('Camber Angle vs Wheel Travel')
+            self.cg_ax.legend()
+            self.cg_ax.grid(True, alpha=0.3)
+            self._add_textbox(self.cg_ax,
+                              f'Static = {static_cam:+.3f}°\n'
+                              f'Avg gain = {avg_cg:+.4f} deg/in\n'
+                              f'Neg gain in bump = ✓')
+            self.cg_fig.tight_layout()
+            self.cg_canvas.draw()
+
+            self.plot_notebook.select(1)
+
+        except Exception as e:
+            self.logger.error(f"Camber gain error: {e}", exc_info=True)
+            self.update_results(f"Error in camber gain:\n{e}")
+
+    def calculate_roll_center(self):
+        try:
+            shock_min, shock_max, shock_step = self._get_shock_params()
+            points = self._get_points()
+
+            calc    = RollCenterCalculator()
+            results = calc.calculate_roll_center(shock_min, shock_max, shock_step, points)
+
+            rc_heights  = results['roll_center_heights']
+            wheel       = results['wheel_displacements']
+            migration   = results['rc_migration']
+            static_rc   = results['static_rc_height']
+            avg_rc      = results['avg_rc_height']
+
+            static_str = f"{static_rc:.3f}" if static_rc is not None else "N/A"
+
+            self.update_results(
+                f"Roll Center Height Analysis\n"
+                f"{'─'*40}\n"
+                f"Static RC height:  {static_str} in above ground\n"
+                f"Average RC height: {avg_rc:.3f} in\n\n"
+                f"RC range:          {np.nanmin(rc_heights):.3f} → {np.nanmax(rc_heights):.3f} in\n"
+                f"Migration:         {np.nanmin(migration):+.3f} → {np.nanmax(migration):+.3f} in\n"
+                f"Wheel range:       {wheel.min():.3f} → {wheel.max():.3f} in\n\n"
+                f"FSAE target: RC typically 0–3 in above ground at static.\n"
+                f"Less RC migration through travel is generally preferred.\n"
+            )
+
+            self.rc_ax.clear()
+            self.rc_ax.plot(wheel, rc_heights, 'm-', linewidth=2, label='RC Height')
+            if static_rc is not None:
+                self.rc_ax.axhline(static_rc, color='k', linestyle=':', linewidth=1,
+                                   label=f'Static = {static_rc:.3f} in')
+            self.rc_ax.axvline(0, color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+            self.rc_ax.axhline(0, color='gray', linestyle='-', linewidth=0.8, alpha=0.3)
+            self.rc_ax.set_xlabel('Wheel Vertical Travel (in)')
+            self.rc_ax.set_ylabel('Roll Center Height (in above ground)')
+            self.rc_ax.set_title('Roll Center Height vs Wheel Travel')
+            self.rc_ax.legend()
+            self.rc_ax.grid(True, alpha=0.3)
+            self._add_textbox(self.rc_ax,
+                              f'Static RC = {static_str} in\n'
+                              f'Avg RC    = {avg_rc:.3f} in\n'
+                              f'FSAE target: 0–3 in')
+            self.rc_fig.tight_layout()
+            self.rc_canvas.draw()
+
+            self.plot_notebook.select(2)
+
+        except Exception as e:
+            self.logger.error(f"Roll center error: {e}", exc_info=True)
+            self.update_results(f"Error in roll center:\n{e}")
+
+    def run_all(self):
+        """Run all three calculations sequentially (each calls sweep once)."""
+        self.calculate_motion_ratio()
+        self.calculate_camber_gain()
+        self.calculate_roll_center()
+        self.update_results(
+            "▶  Run All complete.\n\n"
+            "Check the Motion Ratio, Camber Gain, and Roll Center plot tabs.\n"
+            "Results from the last individual calculation are shown above.\n"
+        )
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _get_shock_params(self):
+        return (float(self.shock_min.get()),
+                float(self.shock_max.get()),
+                float(self.shock_step.get()))
+
+    def _get_points(self):
+        from ..data_loader import DataLoader
+        # Build a temporary loader to reuse get_2d_points logic,
+        # but use the live data arrays (may have been edited in the table).
+        loader = DataLoader.__new__(DataLoader)
+        loader.basic_data   = self.basic_data
+        loader.pushrod_data = self.pushrod_data
+        return loader.get_2d_points(self.suspension_type.get())
+
     def update_results(self, text: str):
-        """Update the results text area"""
         self.results_text.configure(state=tk.NORMAL)
         self.results_text.delete(1.0, tk.END)
         self.results_text.insert(tk.END, text)
         self.results_text.configure(state=tk.DISABLED)
 
-    def plot_analysis(self, x_data, y_data, xlabel, ylabel, title):
-        """Helper method to plot analysis results"""
-        self.analysis_ax.clear()
-        self.analysis_ax.set_axis_on()
-        self.analysis_ax.plot(x_data, y_data, 'bo-', linewidth=2, markersize=6)
-        self.analysis_ax.set_xlabel(xlabel)
-        self.analysis_ax.set_ylabel(ylabel)
-        self.analysis_ax.set_title(title)
-        self.analysis_ax.grid(True, alpha=0.3)
-        self.analysis_fig.tight_layout()
-        self.analysis_canvas.draw()
+    @staticmethod
+    def _add_textbox(ax, text: str):
+        props = dict(boxstyle='round', facecolor='white', edgecolor='black', alpha=0.8)
+        ax.text(0.05, 0.95, text, transform=ax.transAxes, fontsize=9,
+                verticalalignment='top', bbox=props)
 
-    def clear_plot(self):
-        """Clear the analysis plot"""
-        self.analysis_ax.clear()
-        self.analysis_ax.text(0.5, 0.5, 'Analysis results will appear here',
-                              ha='center', va='center', transform=self.analysis_ax.transAxes,
-                              fontsize=14, color='gray')
-        self.analysis_ax.set_axis_off()
-        self.analysis_canvas.draw()
+    def _init_empty_plots(self):
+        for ax, canvas, label in [
+            (self.mr_ax,  self.mr_canvas,  'Motion Ratio'),
+            (self.cg_ax,  self.cg_canvas,  'Camber Gain'),
+            (self.rc_ax,  self.rc_canvas,  'Roll Center Height'),
+        ]:
+            ax.text(0.5, 0.5, f'{label} results will appear here',
+                    ha='center', va='center', transform=ax.transAxes,
+                    fontsize=13, color='gray')
+            ax.set_axis_off()
+            canvas.draw()
+
+    # ── Legacy helpers kept for any external callers ──────────────────────────
 
     def get_2d_points(self, suspension_type='pushrod'):
-        """
-        Calculate 2D Y-Z projections for kinematics analysis.
-        Returns a dictionary of 2D points (Y, Z) for the specified suspension.
+        from ..data_loader import DataLoader
+        loader = DataLoader.__new__(DataLoader)
+        loader.basic_data   = self.basic_data
+        loader.pushrod_data = self.pushrod_data
+        return loader.get_2d_points(suspension_type)
 
-        Args:
-            suspension_type: 'basic' or 'pushrod'
+    def plot_analysis(self, x_data, y_data, xlabel, ylabel, title):
+        self.mr_ax.clear()
+        self.mr_ax.set_axis_on()
+        self.mr_ax.plot(x_data, y_data, 'bo-', linewidth=2, markersize=6)
+        self.mr_ax.set_xlabel(xlabel)
+        self.mr_ax.set_ylabel(ylabel)
+        self.mr_ax.set_title(title)
+        self.mr_ax.grid(True, alpha=0.3)
+        self.mr_fig.tight_layout()
+        self.mr_canvas.draw()
 
-        Returns:
-            dict: Dictionary with point names as keys and [Y, Z] arrays as values
-        """
-        if suspension_type == 'basic':
-            data = self.basic_data
-            # Column indices for basic suspension
-            points = {
-                'UCA_IN': self._calculate_effective_point(data, [0, 1]),  # Average of front and rear UCA inboard
-                'LCA_IN': self._calculate_effective_point(data, [2, 3]),  # Average of front and rear LCA inboard
-                'PushRodIN': np.array([data[1, 4], data[2, 4]]),
-                'UCA_OUT': np.array([data[1, 5], data[2, 5]]),
-                'LCA_OUT': np.array([data[1, 6], data[2, 6]]),
-                'PushRodOUT': np.array([data[1, 7], data[2, 7]]),
-                'Wheel_center': np.array([data[1, 8], data[2, 8]])
-            }
-        else:  # pushrod
-            data = self.pushrod_data
-            # Column indices for pushrod suspension
-            points = {
-                'UCA_IN': self._calculate_effective_point(data, [0, 1]),  # Average of front and rear UCA inboard
-                'LCA_IN': self._calculate_effective_point(data, [2, 3]),  # Average of front and rear LCA inboard
-                'PushRodIN': np.array([data[1, 4], data[2, 4]]),
-                'UCA_OUT': np.array([data[1, 5], data[2, 5]]),
-                'LCA_OUT': np.array([data[1, 6], data[2, 6]]),
-                'PushRodOUT': np.array([data[1, 7], data[2, 7]]),
-                'Cam_Hinge': np.array([data[1, 8], data[2, 8]]),
-                'Shock_OUT': np.array([data[1, 9], data[2, 9]]),
-                'Shock_IN': np.array([data[1, 10], data[2, 10]]),
-                'Wheel_center': np.array([data[1, 11], data[2, 11]])
-            }
-
-        return points
-
-    def _calculate_effective_point(self, data, indices):
-        """
-        Calculate effective 2D point for control arms that have front and rear mounts.
-        Uses centroid of the mounting points projected onto Y-Z plane.
-
-        Args:
-            data: 3D coordinate array (3 x N)
-            indices: list of column indices to average (e.g., [0, 1] for front and rear UCA)
-
-        Returns:
-            np.array: [Y, Z] coordinates
-        """
-        # Average the Y and Z coordinates
-        y_avg = np.mean([data[1, i] for i in indices])
-        z_avg = np.mean([data[2, i] for i in indices])
-
-        return np.array([y_avg, z_avg])
-
-    def calculate_motion_ratio(self):
-        """Calculate motion ratio using 2D geometry"""
-        try:
-            # Get shock travel parameters
-            shock_min = float(self.shock_min.get())
-            shock_max = float(self.shock_max.get())
-            shock_step = float(self.shock_step.get())
-
-            # Get suspension type
-            suspension_type = self.suspension_type.get()
-
-            # Get 2D points
-            points = self.get_2d_points(suspension_type)
-
-            # Use the calculator
-            calculator = MotionRatioCalculator()
-            results = calculator.calculate_motion_ratio(shock_min, shock_max, shock_step, points)
-
-            avg_motion_ratio = results['avg_motion_ratio']
-            shock_displacements = results['shock_displacements']
-            wheel_displacements = results['wheel_displacements']
-            motion_ratio = results['motion_ratio']
-            wheel_travel_mid = results['wheel_travel_mid']
-            shock_step = results['shock_step']
-
-            # Update results text
-            results_text = f"""Motion Ratio Analysis
-
-Average Motion Ratio = {avg_motion_ratio:.3f} (shock travel / wheel travel)
-Interpretation: Shock moves {avg_motion_ratio:.3f} inches for every 1 inch of wheel travel
-HIGHER number = MORE shock travel = stiffer feeling suspension
-LOWER number = LESS shock travel = softer feeling suspension
-
-Shock travel range: {shock_displacements[0]:.3f} to {shock_displacements[-1]:.3f} in
-Wheel travel range: {wheel_displacements[0]:.3f} to {wheel_displacements[-1]:.3f} in
-Motion ratio range: {motion_ratio.min():.3f} to {motion_ratio.max():.3f}
-
-Number of points: {len(shock_displacements)}
-Step size: {shock_step:.3f}
-"""
-            self.update_results(results_text)
-
-            # Plot motion ratio vs wheel travel
-            self.analysis_ax.clear()
-            self.analysis_ax.set_axis_on()
-            self.analysis_ax.plot(wheel_travel_mid, motion_ratio, 'b-', linewidth=2, label='Motion Ratio')
-            self.analysis_ax.axhline(y=avg_motion_ratio, color='r', linestyle='--', linewidth=1.5,
-                                    label=f'Avg = {avg_motion_ratio:.3f}')
-            self.analysis_ax.grid(True)
-            self.analysis_ax.set_xlabel('Wheel Vertical Travel (in)')
-            self.analysis_ax.set_ylabel('Motion Ratio (shock travel / wheel travel)')
-            self.analysis_ax.set_title('Motion Ratio vs Wheel Travel')
-            self.analysis_ax.legend()
-
-            # Add text box
-            textstr = f'Avg MR = {avg_motion_ratio:.3f}\nHigher MR → More shock travel\nLower MR → Less shock travel'
-            props = dict(boxstyle='round', facecolor='white', edgecolor='black', alpha=0.8)
-            self.analysis_ax.text(0.05, 0.95, textstr, transform=self.analysis_ax.transAxes, fontsize=10,
-                                 verticalalignment='top', bbox=props)
-
-            self.analysis_fig.tight_layout()
-            self.analysis_canvas.draw()
-
-        except Exception as e:
-            self.logger.error(f"Error in motion ratio calculation: {e}")
-            self.update_results(f"Error: {e}")
-            self.clear_plot()
-
-    # Add your calculation methods here as you implement them
-    # Example structure:
-    # def calculate_motion_ratio(self):
-    #     """Calculate motion ratio"""
-    #     try:
-    #         travel_min = float(self.travel_min.get())
-    #         travel_max = float(self.travel_max.get())
-    #         step = float(self.travel_step.get())
-    #
-    #         # Your calculation code here
-    #
-    #         # Update results text
-    #         self.update_results("Results text here")
-    #
-    #         # Plot the data
-    #         self.plot_analysis(x_data, y_data, "X Label", "Y Label", "Plot Title")
-    #     except Exception as e:
-    #         self.logger.error(f"Error: {e}")
-    #         self.update_results(f"Error: {e}")
+    def clear_plot(self):
+        self._init_empty_plots()
